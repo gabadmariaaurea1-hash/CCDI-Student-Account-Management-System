@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./styles.css";
 
@@ -45,6 +45,48 @@ const [showPassword, setShowPassword] = useState(false);
 const [username, setUsername] = useState("");
 const [password, setPassword] = useState("");
 
+const [payments, setPayments] = useState([]);
+
+const [selectedStudentId, setSelectedStudentId] =
+  useState("2026-001");
+
+const [paymentAmount, setPaymentAmount] = useState("");
+const [paymentDate, setPaymentDate] = useState(
+  new Date().toLocaleDateString("en-CA")
+);
+const [paymentMessage, setPaymentMessage] = useState("");
+
+// Change this port if your C# API displays a different port in the terminal.
+const API_URL = "http://localhost:5029";
+
+// Load payments for the sample student from the backend.
+useEffect(() => {
+  async function loadPayments() {
+    try {
+      const response = await fetch(
+        `${API_URL}/api/payments/2026-001`
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to load payment records.");
+      }
+
+      const data = await response.json();
+      setPayments(
+        data.map((payment) => ({
+          ...payment,
+          studentId: payment.studentNumber,
+          date: payment.paymentDate?.split("T")[0] ?? "",
+          amount: Number(payment.amount),
+        }))
+      );
+    } catch (error) {
+      console.error("Error loading payments:", error);
+    }
+  }
+
+  loadPayments();
+}, []);
 
   // LOGIN
   const handleLogin = (e) => {
@@ -65,6 +107,73 @@ const [password, setPassword] = useState("");
     setLoginRole("admin");
     setActiveMenu("Dashboard");
     setActiveStudentMenu("Overview");
+  };
+
+  const handleRecordPayment = async (e) => {
+    e.preventDefault();
+
+    const amount = Number(paymentAmount);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setPaymentMessage("Enter a valid payment amount.");
+      return;
+    }
+
+    const student = students.find(
+      (item) => item.id === selectedStudentId
+    );
+
+    if (!student) {
+      setPaymentMessage("Select a valid student.");
+      return;
+    }
+
+    const receiptNo = `OR-${Date.now()}`;
+
+    try {
+      const response = await fetch(`${API_URL}/api/payments`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          studentNumber: selectedStudentId,
+          receiptNo,
+          amount,
+          paymentDate,
+        }),
+      });
+
+      const result = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          result?.message || "Could not save payment to the database."
+        );
+      }
+
+      const responseForStudent = await fetch(
+        `${API_URL}/api/payments/${selectedStudentId}`
+      );
+
+      if (responseForStudent.ok) {
+        const data = await responseForStudent.json();
+        setPayments(
+          data.map((payment) => ({
+            ...payment,
+            studentId: payment.studentNumber,
+            date: payment.paymentDate?.split("T")[0] ?? "",
+            amount: Number(payment.amount),
+          }))
+        );
+      }
+
+      setPaymentAmount("");
+      setPaymentMessage(`Cash payment saved for ${student.name}.`);
+    } catch (error) {
+      console.error("Error recording payment:", error);
+      setPaymentMessage(error.message || "Could not save payment.");
+    }
   };
 
   // ========================================
@@ -476,7 +585,25 @@ const [password, setPassword] = useState("");
               </section>
               <section className="student-panel recent-payments-panel">
                 <div className="student-panel-heading"><div><h3>Recent Payments</h3><p>Your latest recorded transactions</p></div><button className="student-text-button" onClick={() => setActiveStudentMenu("Payment History")}>View all payments →</button></div>
-                <div className="student-table-wrap"><table className="student-table"><thead><tr><th>Receipt No.</th><th>Date</th><th>Payment Method</th><th>Amount</th><th>Status</th></tr></thead><tbody><tr><td><strong>OR-2026-0182</strong></td><td>Oct 15, 2026</td><td>GCash</td><td className="payment-amount">₱5,000.00</td><td><span className="payment-status">Recorded</span></td></tr><tr><td><strong>OR-2026-0127</strong></td><td>Sep 20, 2026</td><td>Cash</td><td className="payment-amount">₱10,000.00</td><td><span className="payment-status">Recorded</span></td></tr><tr><td><strong>OR-2026-0084</strong></td><td>Aug 12, 2026</td><td>Bank Transfer</td><td className="payment-amount">₱5,000.00</td><td><span className="payment-status">Recorded</span></td></tr></tbody></table></div>
+                <div className="student-table-wrap"><table className="student-table"><thead><tr><th>Receipt No.</th><th>Date</th><th>Payment Method</th><th>Amount</th><th>Status</th></tr></thead>
+<tbody>
+  {payments.map((payment) => (
+    <tr key={payment.id}>
+      <td><strong>{payment.receiptNo}</strong></td>
+      <td>{payment.date}</td>
+      <td>Cash</td>
+      <td className="payment-amount">
+        ₱{payment.amount.toLocaleString("en-PH", {
+          minimumFractionDigits: 2,
+        })}
+      </td>
+      <td>
+        <span className="payment-status">{payment.status}</span>
+      </td>
+    </tr>
+  ))}
+</tbody>
+</table></div>
               </section>
             </>
           )}
@@ -486,7 +613,47 @@ const [password, setPassword] = useState("");
           )}
 
           {activeStudentMenu === "Payment History" && (
-            <section className="student-panel student-page-panel"><div className="student-panel-heading"><div><h3>Payment History and Receipts</h3><p>Payments recorded for your student account</p></div></div><div className="student-table-wrap"><table className="student-table"><thead><tr><th>Receipt No.</th><th>Date</th><th>Payment Method</th><th>Amount</th><th>Status</th></tr></thead><tbody><tr><td><strong>OR-2026-0182</strong></td><td>Oct 15, 2026</td><td>GCash</td><td className="payment-amount">₱5,000.00</td><td><span className="payment-status">Recorded</span></td></tr><tr><td><strong>OR-2026-0127</strong></td><td>Sep 20, 2026</td><td>Cash</td><td className="payment-amount">₱10,000.00</td><td><span className="payment-status">Recorded</span></td></tr><tr><td><strong>OR-2026-0084</strong></td><td>Aug 12, 2026</td><td>Bank Transfer</td><td className="payment-amount">₱5,000.00</td><td><span className="payment-status">Recorded</span></td></tr></tbody></table></div><p className="student-note">Receipt numbers and transactions shown here are examples, not official payment records.</p></section>
+            <section className="student-panel student-page-panel">
+              <div className="student-panel-heading">
+                <div>
+                  <h3>Payment History and Receipts</h3>
+                  <p>Payments recorded for your student account</p>
+                </div>
+              </div>
+              <div className="student-table-wrap">
+                <table className="student-table">
+                  <thead>
+                    <tr>
+                      <th>Receipt No.</th>
+                      <th>Date</th>
+                      <th>Payment Method</th>
+                      <th>Amount</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((payment) => (
+                      <tr key={payment.id}>
+                        <td><strong>{payment.receiptNo}</strong></td>
+                        <td>{payment.date}</td>
+                        <td>{payment.method || "Cash"}</td>
+                        <td className="payment-amount">
+                          ₱{Number(payment.amount).toLocaleString("en-PH", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </td>
+                        <td><span className="payment-status">{payment.status}</span></td>
+                      </tr>
+                    ))}
+                    {payments.length === 0 && (
+                      <tr><td colSpan="5">No payment records found.</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              <p className="student-note">Only payment records saved in the database will appear here.</p>
+            </section>
           )}
 
           {activeStudentMenu === "Discounts" && (
@@ -864,6 +1031,125 @@ const [password, setPassword] = useState("");
           </section>
 
         )}
+
+        {/* ADMIN CASH PAYMENT PAGE */}
+
+{activeMenu === "Accounts" && (
+  <section className="panel page-panel">
+    <div className="panel-header">
+      <div>
+        <h3>Record Student Cash Payment</h3>
+        <p>
+          Enter the cash received from a student.
+        </p>
+      </div>
+    </div>
+
+    <form onSubmit={handleRecordPayment}>
+      <div className="search-row">
+        <select
+          className="normal-input"
+          value={selectedStudentId}
+          onChange={(e) =>
+            setSelectedStudentId(e.target.value)
+          }
+          required
+        >
+          {students.map((student) => (
+            <option key={student.id} value={student.id}>
+              {student.id} - {student.name}
+            </option>
+          ))}
+        </select>
+
+        <input
+          className="normal-input"
+          type="number"
+          min="0.01"
+          step="0.01"
+          placeholder="Cash amount (₱)"
+          value={paymentAmount}
+          onChange={(e) =>
+            setPaymentAmount(e.target.value)
+          }
+          required
+        />
+
+        <input
+          className="normal-input"
+          type="date"
+          value={paymentDate}
+          onChange={(e) =>
+            setPaymentDate(e.target.value)
+          }
+          required
+        />
+
+        <input
+          className="normal-input"
+          value="Cash"
+          readOnly
+          aria-label="Payment method"
+        />
+      </div>
+
+      <button
+        className="primary-button"
+        type="submit"
+      >
+        Record Payment
+      </button>
+
+      {paymentMessage && (
+        <p role="status">{paymentMessage}</p>
+      )}
+    </form>
+
+    <h3>Recorded Cash Payments</h3>
+
+    <div className="student-table-wrap">
+      <table className="student-table">
+        <thead>
+          <tr>
+            <th>Receipt No.</th>
+            <th>Student</th>
+            <th>Date</th>
+            <th>Method</th>
+            <th>Amount</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {payments.map((payment) => {
+            const student = students.find(
+              (item) => item.id === payment.studentId
+            );
+
+            return (
+              <tr key={payment.id}>
+                <td>{payment.receiptNo}</td>
+                <td>{student?.name ?? payment.studentId}</td>
+                <td>{payment.date}</td>
+                <td>Cash</td>
+                <td>
+                  {payment.amount.toLocaleString(
+                    "en-PH",
+                    {
+                      style: "currency",
+                      currency: "PHP",
+                    }
+                  )}
+                </td>
+                <td>{payment.status}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  </section>
+)}
 
         {/* OTHER PAGES */}
 
